@@ -8,6 +8,10 @@ distance your eye blends them back into smooth tone.
 This is the same trick printing presses used for over a century to put
 photographs on paper.
 
+**[Try it in your browser →](https://trolzie.github.io/halftone/)** — drag in an
+image, tune the screen with live sliders, download the result. Runs entirely
+client-side; nothing is uploaded.
+
 ## See it
 
 | Original | Halftone |
