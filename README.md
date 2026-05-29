@@ -8,6 +8,12 @@ distance your eye blends them back into smooth tone.
 This is the same trick printing presses used for over a century to put
 photographs on paper.
 
+## See it
+
+| Original | Halftone |
+| --- | --- |
+| ![Original photo](examples/demo_before.jpg) | ![Halftone version](examples/demo_after.png) |
+
 ## Install
 
 ```bash
