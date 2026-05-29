@@ -6,118 +6,153 @@
 <title>halftone — drag an image in</title>
 <style>
   :root {
-    --bg: #f4f4f2;
-    --ink: #161616;
-    --line: #d8d8d4;
-    --accent: #161616;
+    --paper: #f3f0e8;
+    --card: #fffdf8;
+    --ink: #14110f;
+    --muted: #6f6a61;
+    --line: #ddd7c9;
+    --accent: #d8392b;     /* newspaper red */
+    --shadow: 0 1px 2px rgba(20,17,15,.04), 0 8px 24px rgba(20,17,15,.06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0;
-    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     color: var(--ink);
-    background: var(--bg);
+    background-color: var(--paper);
+    /* faint halftone dot texture */
+    background-image: radial-gradient(var(--line) 1px, transparent 1.4px);
+    background-size: 22px 22px;
     -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
   }
-  header {
-    text-align: center;
-    padding: 2.2rem 1rem 0.6rem;
+
+  /* Top bar */
+  .topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1rem 1.4rem; max-width: 1040px; margin: 0 auto; width: 100%;
   }
-  header h1 { margin: 0; font-size: 2rem; letter-spacing: -0.02em; }
-  header p { margin: 0.4rem 0 0; color: #555; }
-  header a { color: var(--ink); }
-  main {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 1.5rem 1rem 4rem;
+  .brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 800; letter-spacing: -0.02em; }
+  .brand .glyph {
+    width: 22px; height: 22px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 30% 30%, var(--ink) 38%, transparent 39%),
+      radial-gradient(circle at 72% 60%, var(--ink) 26%, transparent 27%),
+      radial-gradient(circle at 40% 78%, var(--ink) 18%, transparent 19%);
+    border: 1.5px solid var(--ink);
   }
-  /* Drop zone */
+  .topbar a { color: var(--muted); text-decoration: none; font-size: 0.88rem; font-weight: 600; }
+  .topbar a:hover { color: var(--ink); }
+
+  main { flex: 1; max-width: 1040px; margin: 0 auto; padding: 1rem 1.4rem 3rem; width: 100%; }
+
+  /* Hero */
+  .hero { text-align: center; padding: 2.4rem 1rem 2rem; }
+  .eyebrow {
+    display: inline-block; font: 600 0.72rem/1 var(--mono);
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 0.4rem 0.7rem;
+    margin-bottom: 1.3rem;
+  }
+  .hero h1 {
+    margin: 0; font-size: clamp(2.6rem, 7vw, 4.4rem); line-height: 0.95;
+    letter-spacing: -0.03em; font-weight: 800;
+  }
+  .hero p { margin: 0.9rem auto 0; max-width: 38rem; color: var(--muted); font-size: 1.05rem; }
+
+  /* Drop zone — display:block fixes the collapsed-label bug */
   #drop {
-    border: 2px dashed var(--line);
-    border-radius: 12px;
-    background: #fff;
-    padding: 3rem 1rem;
-    text-align: center;
-    color: #777;
-    cursor: pointer;
-    transition: border-color .15s, background .15s;
+    display: block; width: 100%; max-width: 640px; margin: 2rem auto 0;
+    border: 2px dashed var(--line); border-radius: 18px; background: var(--card);
+    padding: 3.2rem 1.5rem; text-align: center; color: var(--muted);
+    cursor: pointer; box-shadow: var(--shadow);
+    transition: border-color .15s, background .15s, transform .15s;
   }
-  #drop.drag { border-color: var(--accent); background: #fafafa; color: var(--ink); }
-  #drop strong { color: var(--ink); }
+  #drop:hover { border-color: var(--ink); transform: translateY(-2px); }
+  #drop.drag { border-color: var(--accent); background: #fff; color: var(--ink); transform: translateY(-2px); }
+  #drop .dot {
+    width: 46px; height: 46px; margin: 0 auto 1rem; border-radius: 50%;
+    background:
+      radial-gradient(circle at 32% 32%, var(--ink) 40%, transparent 41%),
+      radial-gradient(circle at 70% 58%, var(--ink) 28%, transparent 29%),
+      radial-gradient(circle at 42% 76%, var(--ink) 20%, transparent 21%);
+    border: 2px solid var(--ink); opacity: .85;
+  }
+  #drop .big { display: block; font-size: 1.15rem; font-weight: 700; color: var(--ink); margin-bottom: 0.25rem; }
+  #drop .sub { font-size: 0.9rem; }
   #drop input { display: none; }
 
-  .stage { display: none; margin-top: 1.5rem; }
+  /* Stage */
+  .stage { display: none; margin-top: 1rem; }
   .stage.show { display: block; }
-
-  .layout {
-    display: grid;
-    grid-template-columns: 1fr 280px;
-    gap: 1.5rem;
-    align-items: start;
-  }
-  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+  .layout { display: grid; grid-template-columns: 1fr 300px; gap: 1.6rem; align-items: start; }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
 
   .canvas-wrap {
     background:
-      linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%) 0 0/20px 20px,
-      linear-gradient(45deg, #eee 25%, #fff 25%, #fff 75%, #eee 75%) 10px 10px/20px 20px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 10px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 200px;
+      linear-gradient(45deg, #e7e3d9 25%, transparent 25%, transparent 75%, #e7e3d9 75%) 0 0/22px 22px,
+      linear-gradient(45deg, #e7e3d9 25%, var(--card) 25%, var(--card) 75%, #e7e3d9 75%) 11px 11px/22px 22px;
+    border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+    display: flex; justify-content: center; align-items: center; min-height: 240px;
+    box-shadow: var(--shadow);
   }
-  canvas { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+  canvas { max-width: 100%; height: auto; display: block; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
 
-  .controls {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 1rem 1.2rem 1.4rem;
-  }
-  .control { margin-bottom: 1rem; }
-  .control:last-child { margin-bottom: 0; }
-  .control label {
-    display: flex; justify-content: space-between;
-    font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem;
-  }
-  .control label .val { font-weight: 400; color: #888; font-variant-numeric: tabular-nums; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  .checkbox { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; }
-  .checkbox input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .controls { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 1.3rem 1.3rem 1.4rem; box-shadow: var(--shadow); }
+  .controls h2 { margin: 0 0 1.1rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-family: var(--mono); }
+  .control { margin-bottom: 1.05rem; }
+  .control label { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; }
+  .control label .val { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  input[type=range] { width: 100%; accent-color: var(--ink); }
+  .checkbox { display: flex; align-items: center; gap: 0.55rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+  .checkbox input { accent-color: var(--accent); width: 17px; height: 17px; }
 
-  .btnrow { display: flex; gap: 0.6rem; margin-top: 1.2rem; }
+  .btnrow { display: flex; gap: 0.6rem; margin-top: 1.3rem; }
   button {
-    flex: 1; cursor: pointer; font: inherit; font-weight: 600; font-size: 0.9rem;
-    padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--ink);
-    background: var(--ink); color: #fff; transition: opacity .15s;
+    flex: 1; cursor: pointer; font: inherit; font-weight: 700; font-size: 0.9rem;
+    padding: 0.65rem 0.8rem; border-radius: 9px; border: 1.5px solid var(--ink);
+    background: var(--ink); color: #fff; transition: background .15s, color .15s, transform .1s;
   }
-  button:hover { opacity: 0.85; }
-  button.ghost { background: #fff; color: var(--ink); }
+  button:hover { background: var(--accent); border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.ghost { background: transparent; color: var(--ink); }
+  button.ghost:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
 
   .cmd {
-    margin-top: 1rem; font-size: 0.78rem; color: #666;
-    background: #fff; border: 1px solid var(--line); border-radius: 8px;
-    padding: 0.7rem 0.9rem; overflow-x: auto; white-space: nowrap;
+    margin-top: 1.1rem; font-size: 0.74rem; color: var(--muted); font-family: var(--mono);
+    background: var(--paper); border: 1px solid var(--line); border-radius: 9px;
+    padding: 0.7rem 0.85rem; overflow-x: auto; white-space: nowrap;
   }
   .cmd code { color: var(--ink); }
-  .note { font-size: 0.78rem; color: #999; margin-top: 0.6rem; }
-  footer { text-align: center; color: #999; font-size: 0.8rem; padding-bottom: 2rem; }
+  .note { font-size: 0.76rem; color: var(--muted); margin-top: 0.7rem; }
+
+  footer { text-align: center; color: var(--muted); font-size: 0.82rem; padding: 1.5rem 1rem 2.5rem; }
+  footer a { color: var(--ink); }
 </style>
 </head>
 <body>
-<header>
-  <h1>halftone</h1>
-  <p>Drag in a photo to turn it into a classic newspaper-style print. Runs entirely in your browser — nothing is uploaded.</p>
-</header>
+<div class="topbar">
+  <div class="brand"><span class="glyph"></span> halftone</div>
+  <a href="https://github.com/Trolzie/halftone" target="_blank" rel="noopener">View on GitHub ↗</a>
+</div>
 
 <main>
-  <label id="drop">
-    <input type="file" id="file" accept="image/*" />
-    <div><strong>Drag &amp; drop an image here</strong>, or click to choose one.</div>
-  </label>
+  <div class="hero">
+    <span class="eyebrow">Runs in your browser · nothing uploaded</span>
+    <h1>Print it in dots.</h1>
+    <p>Turn any photo into a classic newspaper-style halftone — a grid of black dots whose size follows the shadows. Drag one in to start.</p>
+
+    <label id="drop">
+      <input type="file" id="file" accept="image/*" />
+      <span class="dot"></span>
+      <span class="big">Drag &amp; drop an image</span>
+      <span class="sub">…or click to choose one</span>
+    </label>
+  </div>
 
   <section class="stage" id="stage">
     <div class="layout">
@@ -125,6 +160,7 @@
         <canvas id="canvas"></canvas>
       </div>
       <div class="controls">
+        <h2>The screen</h2>
         <div class="control">
           <label>Cell size <span class="val" id="v-cell"></span></label>
           <input type="range" id="cell" min="2" max="24" step="1" value="6" />
@@ -142,11 +178,11 @@
           <input type="range" id="maxdot" min="0.8" max="2" step="0.05" value="1.4" />
         </div>
         <div class="control">
-          <label>Quality (supersample) <span class="val" id="v-scale"></span></label>
+          <label>Quality <span class="val" id="v-scale"></span></label>
           <input type="range" id="scale" min="1" max="3" step="1" value="1" />
         </div>
         <div class="control">
-          <label class="checkbox"><input type="checkbox" id="invert" /> Invert (white ink on black)</label>
+          <label class="checkbox"><input type="checkbox" id="invert" /> Invert — white ink on black</label>
         </div>
         <div class="btnrow">
           <button id="download">Download PNG</button>
@@ -160,7 +196,7 @@
 </main>
 
 <footer>
-  A faithful JavaScript port of the <a href="https://github.com/Trolzie/halftone">halftone</a> Python tool.
+  A faithful JavaScript port of the <a href="https://github.com/Trolzie/halftone" target="_blank" rel="noopener">halftone</a> Python tool · MIT licensed
 </footer>
 
 <script>
