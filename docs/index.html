@@ -198,6 +198,13 @@
         <div class="control">
           <label class="checkbox"><input type="checkbox" id="invert" /> Invert — white ink on black</label>
         </div>
+        <div class="control">
+          <label class="checkbox"><input type="checkbox" id="color" /> Color — CMYK process halftone</label>
+        </div>
+        <div class="control" id="gcr-control">
+          <label>Black generation <span class="val" id="v-gcr"></span></label>
+          <input type="range" id="gcr" min="0" max="1" step="0.05" value="1" />
+        </div>
         <div class="btnrow">
           <button id="download">Download PNG</button>
           <button class="ghost" id="reset">New image</button>
@@ -258,22 +265,23 @@ function rotateCanvas(srcCanvas, degrees, bgColor) {
   return out;
 }
 
-function halftone(srcCanvas, cfg) {
-  const ink = cfg.invert ? 255 : 0;
-  const bg = cfg.invert ? 0 : 255;
+// Rosette screen angles for the C, M, Y, K screens (matches core.py defaults).
+const CMYK_ANGLES = [15, 75, 0, 45];
+
+// Screen one grayscale "tone" canvas (dark = more ink) into a single-ink
+// halftone — the heart of the renderer, shared by the mono and color paths.
+// Mirrors _screen() in core.py.
+function screenTone(toneCanvas, angle, cfg, ink, bg) {
   const inkColor = `rgb(${ink},${ink},${ink})`;
   const bgColor = `rgb(${bg},${bg},${bg})`;
+  const cell = cfg.cellSize, scale = cfg.scale;
 
-  const cell = cfg.cellSize;
-  const scale = cfg.scale;
-
-  // 1) grayscale, 2) rotate to the screen angle (paper-coloured corners).
-  const gray = grayscaleCanvas(srcCanvas);
-  const rotated = rotateCanvas(gray, cfg.angle, bgColor);
+  // Rotate to the screen angle (paper-coloured corners).
+  const rotated = rotateCanvas(toneCanvas, angle, bgColor);
   const rw = rotated.width, rh = rotated.height;
   const rdata = rotated.getContext("2d").getImageData(0, 0, rw, rh).data;
 
-  // 3) supersampled canvas to draw the dots on.
+  // Supersampled canvas to draw the dots on.
   const big = document.createElement("canvas");
   big.width = rw * scale; big.height = rh * scale;
   const bctx = big.getContext("2d");
@@ -309,23 +317,95 @@ function halftone(srcCanvas, cfg) {
     }
   }
 
-  // 4) shrink the supersampled canvas back down for smooth dot edges.
-  const screen = document.createElement("canvas");
-  screen.width = rw; screen.height = rh;
-  const sctx = screen.getContext("2d");
+  // Shrink the supersampled canvas back down for smooth dot edges.
+  const shrunk = document.createElement("canvas");
+  shrunk.width = rw; shrunk.height = rh;
+  const sctx = shrunk.getContext("2d");
   sctx.imageSmoothingEnabled = true;
   sctx.imageSmoothingQuality = "high";
   sctx.drawImage(big, 0, 0, rw, rh);
 
-  // 5) undo the rotation and crop back to the original frame.
-  const back = rotateCanvas(screen, -cfg.angle, bgColor);
+  // Undo the rotation and crop back to the original frame.
+  const back = rotateCanvas(shrunk, -angle, bgColor);
   const out = document.createElement("canvas");
-  out.width = srcCanvas.width; out.height = srcCanvas.height;
+  out.width = toneCanvas.width; out.height = toneCanvas.height;
   const octx = out.getContext("2d");
   octx.fillStyle = bgColor;
   octx.fillRect(0, 0, out.width, out.height);
   octx.drawImage(back, (out.width - back.width) / 2, (out.height - back.height) / 2);
   return out;
+}
+
+// Monochrome: grayscale -> screen at one angle.
+function halftoneMono(srcCanvas, cfg) {
+  const ink = cfg.invert ? 255 : 0;
+  const bg = cfg.invert ? 0 : 255;
+  return screenTone(grayscaleCanvas(srcCanvas), cfg.angle, cfg, ink, bg);
+}
+
+// Separate an RGB canvas into four grayscale "tone" canvases (dark = more ink)
+// for C, M, Y, K. Black is generated explicitly (gcr), since the naive
+// complement leaves K=0. Mirrors _rgb_to_cmyk() in core.py.
+function separateCmyk(srcCanvas, gcr) {
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const src = srcCanvas.getContext("2d").getImageData(0, 0, w, h).data;
+  const tones = [0, 1, 2, 3].map(() => {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    return { canvas: c, img: c.getContext("2d").createImageData(w, h) };
+  });
+  for (let i = 0; i < w * h; i++) {
+    const j = i * 4;
+    const r = src[j] / 255, g = src[j + 1] / 255, b = src[j + 2] / 255;
+    const k = gcr * (1 - Math.max(r, g, b));
+    const denom = 1 - k;
+    const inv = denom > 1e-6 ? 1 / denom : 0;
+    const cov = [(1 - r - k) * inv, (1 - g - k) * inv, (1 - b - k) * inv, k];
+    for (let ch = 0; ch < 4; ch++) {
+      const c = Math.min(1, Math.max(0, cov[ch]));
+      const tone = Math.round((1 - c) * 255);  // dark = more ink
+      const d = tones[ch].img.data;
+      d[j] = d[j + 1] = d[j + 2] = tone; d[j + 3] = 255;
+    }
+  }
+  return tones.map((t) => {
+    t.canvas.getContext("2d").putImageData(t.img, 0, 0);
+    return t.canvas;
+  });
+}
+
+// Color: separate into CMYK, screen each ink at its rosette angle, then
+// composite back to RGB with the subtractive (multiply) ink model. This is ~4x
+// the work of mono plus a per-pixel separation/composite; the MAX_DIM cap keeps
+// slider drags responsive.
+function halftoneColor(srcCanvas, cfg) {
+  const tones = separateCmyk(srcCanvas, cfg.gcr);
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const screens = tones.map((tone, ch) =>
+    screenTone(tone, CMYK_ANGLES[ch], cfg, 0, 255)
+      .getContext("2d").getImageData(0, 0, w, h).data);
+  const [dc, dm, dy, dk] = screens;
+
+  const out = document.createElement("canvas");
+  out.width = w; out.height = h;
+  const octx = out.getContext("2d");
+  const outImg = octx.createImageData(w, h);
+  const o = outImg.data;
+  for (let i = 0; i < w * h; i++) {
+    const j = i * 4;
+    const covC = 1 - dc[j] / 255, covM = 1 - dm[j] / 255;
+    const covY = 1 - dy[j] / 255, covK = 1 - dk[j] / 255;
+    o[j] = 255 * (1 - covC) * (1 - covK);
+    o[j + 1] = 255 * (1 - covM) * (1 - covK);
+    o[j + 2] = 255 * (1 - covY) * (1 - covK);
+    o[j + 3] = 255;
+  }
+  octx.putImageData(outImg, 0, 0);
+  return out;
+}
+
+function halftone(srcCanvas, cfg) {
+  return cfg.color ? halftoneColor(srcCanvas, cfg) : halftoneMono(srcCanvas, cfg);
 }
 
 // ---- UI wiring ----
@@ -342,7 +422,19 @@ function readConfig() {
     maxDot: +$("maxdot").value,
     scale: +$("scale").value,
     invert: $("invert").checked,
+    color: $("color").checked,
+    gcr: +$("gcr").value,
   };
+}
+
+// Screen angle is monochrome-only; GCR is colour-only. Disable the controls
+// that don't apply to the active mode so the UI mirrors the CLI (where --color
+// and --invert are mutually exclusive).
+function syncModes(cfg) {
+  $("angle").disabled = cfg.color;
+  $("invert").disabled = cfg.color;
+  $("gcr").disabled = !cfg.color;
+  $("gcr-control").style.opacity = cfg.color ? "1" : "0.45";
 }
 
 function updateLabels(cfg) {
@@ -351,13 +443,19 @@ function updateLabels(cfg) {
   $("v-gamma").textContent = cfg.gamma.toFixed(2);
   $("v-maxdot").textContent = cfg.maxDot.toFixed(2);
   $("v-scale").textContent = cfg.scale + "×";
+  $("v-gcr").textContent = cfg.gcr.toFixed(2);
 
   const flags = [`--cell-size ${cfg.cellSize}`];
-  if (cfg.angle !== 45) flags.push(`--angle ${cfg.angle}`);
   if (cfg.gamma !== 1) flags.push(`--gamma ${cfg.gamma}`);
   if (cfg.maxDot !== 1.4) flags.push(`--max-dot ${cfg.maxDot}`);
   if (cfg.scale !== 4) flags.push(`--scale ${cfg.scale}`);
-  if (cfg.invert) flags.push("--invert");
+  if (cfg.color) {
+    flags.push("--color");
+    if (cfg.gcr !== 1) flags.push(`--gcr ${cfg.gcr}`);
+  } else {
+    if (cfg.angle !== 45) flags.push(`--angle ${cfg.angle}`);
+    if (cfg.invert) flags.push("--invert");
+  }
   $("cmd").textContent = `halftone ${sourceName} ${flags.join(" ")}`;
 }
 
@@ -368,6 +466,7 @@ function render() {
   requestAnimationFrame(() => {
     const cfg = readConfig();
     updateLabels(cfg);
+    syncModes(cfg);
     const out = halftone(sourceCanvas, cfg);
     canvas.width = out.width;
     canvas.height = out.height;
@@ -452,6 +551,10 @@ document.querySelectorAll(".chip").forEach((chip) =>
 ["cell", "angle", "gamma", "maxdot", "scale"].forEach((id) =>
   $(id).addEventListener("input", () => { clearActivePreset(); render(); }));
 $("invert").addEventListener("change", () => { clearActivePreset(); render(); });
+// Color toggle and GCR are orthogonal to the mono presets, so they don't clear
+// the active preset highlight — they just re-render.
+$("color").addEventListener("change", render);
+$("gcr").addEventListener("input", render);
 
 $("download").addEventListener("click", () => {
   const a = document.createElement("a");

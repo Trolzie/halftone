@@ -8,6 +8,10 @@ distance your eye blends them back into smooth tone.
 This is the same trick printing presses used for over a century to put
 photographs on paper.
 
+It also renders full-color **CMYK** process halftones — four ink screens
+(cyan, magenta, yellow, black) at the classic rosette angles — as a visual
+simulation of how four-color printing reproduces a photograph.
+
 **[Try it in your browser →](https://trolzie.github.io/halftone/)** — drag in an
 image, tune the screen with live sliders, download the result. Runs entirely
 client-side; nothing is uploaded.
@@ -27,6 +31,15 @@ The screen is fully tunable. A few of the looks you can get:
 | `--invert` (white ink on black) |
 | --- |
 | ![Inverted halftone](examples/demo_invert.png) |
+
+### Color (CMYK)
+
+With `--color`, the image is separated into cyan, magenta, yellow and black
+screens at rosette angles and composited back to RGB:
+
+| Source | CMYK halftone (`--color`) |
+| --- | --- |
+| ![Color source](examples/source_color.png) | ![CMYK halftone](examples/demo_color.png) |
 
 ## Install
 
@@ -51,6 +64,9 @@ halftone photo.jpg --cell-size 12
 
 # White dots on black paper
 halftone photo.jpg --invert
+
+# Full-color CMYK process halftone (RGB output)
+halftone photo.jpg --color
 ```
 
 | Option | What it does |
@@ -58,10 +74,13 @@ halftone photo.jpg --invert
 | `-o, --output` | Output path (default: `<input>_halftone.png`). |
 | `-c, --cell-size PX` | Dot spacing in source pixels. Smaller = finer screen. |
 | `-s, --scale` | Supersampling factor for smooth dot edges. |
-| `-a, --angle DEG` | Screen angle in degrees (45 is traditional). |
+| `-a, --angle DEG` | Screen angle in degrees (45 is traditional; monochrome only). |
 | `-g, --gamma` | Tone curve; `>1` lightens midtones, `<1` darkens. |
 | `--max-dot` | Max dot diameter as a multiple of cell size. |
-| `--invert` | White ink on black paper. |
+| `--invert` | White ink on black paper (monochrome). |
+| `--color` | Four-color CMYK process halftone (RGB output). |
+| `--gcr` | Color: gray-component replacement `0`–`1`. Lower keeps richer CMY shadows. |
+| `--cmyk-angles C M Y K` | Color: the four rosette screen angles (default `15 75 0 45`). |
 
 ## Library usage
 
@@ -74,7 +93,18 @@ out = halftone(src, HalftoneConfig(cell_size=6, angle=45))
 out.save("photo_halftone.png")
 ```
 
-`halftone()` always returns a grayscale (`"L"`) image the same size as the input.
+For color, `halftone_cmyk()` returns an `"RGB"` image:
+
+```python
+from PIL import Image
+from halftone import halftone_cmyk, HalftoneConfig
+
+out = halftone_cmyk(Image.open("photo.jpg"), HalftoneConfig(cell_size=6))
+out.save("photo_color.png")
+```
+
+`halftone()` always returns a grayscale (`"L"`) image and `halftone_cmyk()` an
+`"RGB"` image, both the same size as the input.
 
 ## How it works
 
@@ -91,6 +121,25 @@ out.save("photo_halftone.png")
 
 `max_dot` lets dots in the shadows grow past their cell and overlap, so dark
 regions fill in to solid ink — exactly as ink dots gain on real paper.
+
+### Color (CMYK)
+
+`halftone_cmyk()` extends the same idea to four-color process printing:
+
+1. Separate the image into **cyan, magenta, yellow and black** ink channels.
+   Black is generated explicitly (gray-component replacement, the `gcr` knob),
+   so neutrals and shadows print on the black screen instead of a muddy C+M+Y
+   overprint.
+2. Screen each channel independently at its own **rosette angle** (15°, 75°, 0°,
+   45° by default — the 30° separations stop the screens beating into moiré, and
+   yellow takes 0° because it's the least visible ink).
+3. Composite the four screens back to RGB with a subtractive (multiply) model,
+   so overlapping dots darken and mix into the rosette.
+
+This is a *visual simulation* of how a CMYK press reproduces a photograph,
+composited in ordinary sRGB so it views correctly everywhere (and matches the
+browser version). It is not color-managed prepress output — there is no ICC
+profile or paper/ink model.
 
 ## Examples
 

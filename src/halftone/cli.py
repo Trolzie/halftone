@@ -8,13 +8,13 @@ from pathlib import Path
 
 from PIL import Image
 
-from halftone.core import HalftoneConfig, halftone
+from halftone.core import HalftoneConfig, halftone, halftone_cmyk
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="halftone",
-        description="Turn an image into a classic black-and-white halftone print.",
+        description="Turn an image into a classic halftone print, mono or CMYK color.",
     )
     parser.add_argument("input", type=Path, help="path to the source image")
     parser.add_argument(
@@ -45,7 +45,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=HalftoneConfig.angle,
         metavar="DEG",
-        help="screen angle in degrees (default: %(default)s)",
+        help="screen angle in degrees, monochrome only (default: %(default)s)",
     )
     parser.add_argument(
         "-g",
@@ -60,10 +60,33 @@ def _build_parser() -> argparse.ArgumentParser:
         default=HalftoneConfig.max_dot,
         help="max dot diameter as a multiple of cell size (default: %(default)s)",
     )
-    parser.add_argument(
+
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--invert",
         action="store_true",
-        help="white ink on black paper instead of black on white",
+        help="monochrome: white ink on black paper instead of black on white",
+    )
+    mode.add_argument(
+        "--color",
+        action="store_true",
+        help="four-color CMYK process halftone (RGB output) instead of monochrome",
+    )
+
+    parser.add_argument(
+        "--gcr",
+        type=float,
+        default=HalftoneConfig.gcr,
+        help="color: gray-component replacement 0-1; lower keeps richer CMY shadows "
+        "(default: %(default)s)",
+    )
+    parser.add_argument(
+        "--cmyk-angles",
+        type=float,
+        nargs=4,
+        metavar=("C", "M", "Y", "K"),
+        default=list(HalftoneConfig.cmyk_angles),
+        help="color: the four rosette screen angles in degrees (default: %(default)s)",
     )
     return parser
 
@@ -79,19 +102,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: input file not found: {args.input}", file=sys.stderr)
         return 1
 
-    config = HalftoneConfig(
-        cell_size=args.cell_size,
-        scale=args.scale,
-        angle=args.angle,
-        gamma=args.gamma,
-        max_dot=args.max_dot,
-        ink=255 if args.invert else 0,
-        background=0 if args.invert else 255,
-    )
-
     try:
+        config = HalftoneConfig(
+            cell_size=args.cell_size,
+            scale=args.scale,
+            angle=args.angle,
+            gamma=args.gamma,
+            max_dot=args.max_dot,
+            ink=255 if args.invert else 0,
+            background=0 if args.invert else 255,
+            gcr=args.gcr,
+            cmyk_angles=tuple(args.cmyk_angles),
+        )
         with Image.open(args.input) as image:
-            result = halftone(image, config)
+            result = halftone_cmyk(image, config) if args.color else halftone(image, config)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

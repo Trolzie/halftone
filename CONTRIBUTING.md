@@ -42,6 +42,5 @@ python examples/generate_demo.py
 
 ## Ideas / roadmap
 
-- CMYK color halftone (four screens at rosette angles).
 - Alternative dot shapes (lines, ellipses, squares).
 - FM / stochastic screening as an option.
