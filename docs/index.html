@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>halftone — drag an image in</title>
+<style>
+  :root {
+    --bg: #f4f4f2;
+    --ink: #161616;
+    --line: #d8d8d4;
+    --accent: #161616;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    text-align: center;
+    padding: 2.2rem 1rem 0.6rem;
+  }
+  header h1 { margin: 0; font-size: 2rem; letter-spacing: -0.02em; }
+  header p { margin: 0.4rem 0 0; color: #555; }
+  header a { color: var(--ink); }
+  main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 4rem;
+  }
+  /* Drop zone */
+  #drop {
+    border: 2px dashed var(--line);
+    border-radius: 12px;
+    background: #fff;
+    padding: 3rem 1rem;
+    text-align: center;
+    color: #777;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #drop.drag { border-color: var(--accent); background: #fafafa; color: var(--ink); }
+  #drop strong { color: var(--ink); }
+  #drop input { display: none; }
+
+  .stage { display: none; margin-top: 1.5rem; }
+  .stage.show { display: block; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 1.5rem;
+    align-items: start;
+  }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+
+  .canvas-wrap {
+    background:
+      linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%) 0 0/20px 20px,
+      linear-gradient(45deg, #eee 25%, #fff 25%, #fff 75%, #eee 75%) 10px 10px/20px 20px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+  }
+  canvas { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+
+  .controls {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.2rem 1.4rem;
+  }
+  .control { margin-bottom: 1rem; }
+  .control:last-child { margin-bottom: 0; }
+  .control label {
+    display: flex; justify-content: space-between;
+    font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem;
+  }
+  .control label .val { font-weight: 400; color: #888; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .checkbox { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; }
+  .checkbox input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+  .btnrow { display: flex; gap: 0.6rem; margin-top: 1.2rem; }
+  button {
+    flex: 1; cursor: pointer; font: inherit; font-weight: 600; font-size: 0.9rem;
+    padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--ink);
+    background: var(--ink); color: #fff; transition: opacity .15s;
+  }
+  button:hover { opacity: 0.85; }
+  button.ghost { background: #fff; color: var(--ink); }
+
+  .cmd {
+    margin-top: 1rem; font-size: 0.78rem; color: #666;
+    background: #fff; border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.7rem 0.9rem; overflow-x: auto; white-space: nowrap;
+  }
+  .cmd code { color: var(--ink); }
+  .note { font-size: 0.78rem; color: #999; margin-top: 0.6rem; }
+  footer { text-align: center; color: #999; font-size: 0.8rem; padding-bottom: 2rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>halftone</h1>
+  <p>Drag in a photo to turn it into a classic newspaper-style print. Runs entirely in your browser — nothing is uploaded.</p>
+</header>
+
+<main>
+  <label id="drop">
+    <input type="file" id="file" accept="image/*" />
+    <div><strong>Drag &amp; drop an image here</strong>, or click to choose one.</div>
+  </label>
+
+  <section class="stage" id="stage">
+    <div class="layout">
+      <div class="canvas-wrap">
+        <canvas id="canvas"></canvas>
+      </div>
+      <div class="controls">
+        <div class="control">
+          <label>Cell size <span class="val" id="v-cell"></span></label>
+          <input type="range" id="cell" min="2" max="24" step="1" value="6" />
+        </div>
+        <div class="control">
+          <label>Screen angle <span class="val" id="v-angle"></span></label>
+          <input type="range" id="angle" min="0" max="90" step="1" value="45" />
+        </div>
+        <div class="control">
+          <label>Gamma <span class="val" id="v-gamma"></span></label>
+          <input type="range" id="gamma" min="0.4" max="2.5" step="0.05" value="1" />
+        </div>
+        <div class="control">
+          <label>Max dot <span class="val" id="v-maxdot"></span></label>
+          <input type="range" id="maxdot" min="0.8" max="2" step="0.05" value="1.4" />
+        </div>
+        <div class="control">
+          <label>Quality (supersample) <span class="val" id="v-scale"></span></label>
+          <input type="range" id="scale" min="1" max="3" step="1" value="1" />
+        </div>
+        <div class="control">
+          <label class="checkbox"><input type="checkbox" id="invert" /> Invert (white ink on black)</label>
+        </div>
+        <div class="btnrow">
+          <button id="download">Download PNG</button>
+          <button class="ghost" id="reset">New image</button>
+        </div>
+        <div class="cmd">CLI equivalent:<br /><code id="cmd"></code></div>
+        <div class="note" id="note"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  A faithful JavaScript port of the <a href="https://github.com/Trolzie/halftone">halftone</a> Python tool.
+</footer>
+
+<script>
+"use strict";
+
+// ---- Faithful port of src/halftone/core.py ----
+// Pipeline: grayscale -> rotate to screen angle -> sample a grid of cells ->
+// draw one dot per cell (area proportional to darkness) -> rotate back -> crop.
+
+const MAX_DIM = 1600; // cap working resolution so slider drags stay responsive
+
+function grayscaleCanvas(srcCanvas) {
+  // ITU-R 601-2 luma, matching PIL's "L" conversion: 0.299R + 0.587G + 0.114B.
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const sctx = srcCanvas.getContext("2d");
+  const img = sctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const g = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+    d[i] = d[i + 1] = d[i + 2] = g;
+    d[i + 3] = 255;
+  }
+  const out = document.createElement("canvas");
+  out.width = w; out.height = h;
+  out.getContext("2d").putImageData(img, 0, 0);
+  return out;
+}
+
+function rotateCanvas(srcCanvas, degrees, bgColor) {
+  // Rotate with expand=True (whole image kept) and corners filled with bgColor,
+  // mirroring PIL's image.rotate(angle, expand=True, fillcolor=background).
+  const rad = degrees * Math.PI / 180;
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+  const nw = Math.ceil(w * cos + h * sin);
+  const nh = Math.ceil(w * sin + h * cos);
+  const out = document.createElement("canvas");
+  out.width = nw; out.height = nh;
+  const ctx = out.getContext("2d");
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, nw, nh);
+  ctx.translate(nw / 2, nh / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(srcCanvas, -w / 2, -h / 2);
+  return out;
+}
+
+function halftone(srcCanvas, cfg) {
+  const ink = cfg.invert ? 255 : 0;
+  const bg = cfg.invert ? 0 : 255;
+  const inkColor = `rgb(${ink},${ink},${ink})`;
+  const bgColor = `rgb(${bg},${bg},${bg})`;
+
+  const cell = cfg.cellSize;
+  const scale = cfg.scale;
+
+  // 1) grayscale, 2) rotate to the screen angle (paper-coloured corners).
+  const gray = grayscaleCanvas(srcCanvas);
+  const rotated = rotateCanvas(gray, cfg.angle, bgColor);
+  const rw = rotated.width, rh = rotated.height;
+  const rdata = rotated.getContext("2d").getImageData(0, 0, rw, rh).data;
+
+  // 3) supersampled canvas to draw the dots on.
+  const big = document.createElement("canvas");
+  big.width = rw * scale; big.height = rh * scale;
+  const bctx = big.getContext("2d");
+  bctx.fillStyle = bgColor;
+  bctx.fillRect(0, 0, big.width, big.height);
+  bctx.fillStyle = inkColor;
+
+  for (let top = 0; top < rh; top += cell) {
+    for (let left = 0; left < rw; left += cell) {
+      // Average darkness of this cell (0 = paper, 1 = solid ink).
+      let sum = 0, count = 0;
+      const yEnd = Math.min(top + cell, rh), xEnd = Math.min(left + cell, rw);
+      for (let y = top; y < yEnd; y++) {
+        let idx = (y * rw + left) * 4;
+        for (let x = left; x < xEnd; x++) {
+          sum += rdata[idx];
+          idx += 4;
+          count++;
+        }
+      }
+      let darkness = 1 - (sum / count) / 255;
+      if (cfg.gamma !== 1) darkness = Math.pow(darkness, cfg.gamma);
+      if (darkness <= 0) continue;
+
+      // Dot AREA proportional to darkness -> diameter scales with sqrt(darkness).
+      const diameter = Math.sqrt(darkness) * cfg.maxDot * cell * scale;
+      const radius = diameter / 2;
+      const cx = (left + cell / 2) * scale;
+      const cy = (top + cell / 2) * scale;
+      bctx.beginPath();
+      bctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      bctx.fill();
+    }
+  }
+
+  // 4) shrink the supersampled canvas back down for smooth dot edges.
+  const screen = document.createElement("canvas");
+  screen.width = rw; screen.height = rh;
+  const sctx = screen.getContext("2d");
+  sctx.imageSmoothingEnabled = true;
+  sctx.imageSmoothingQuality = "high";
+  sctx.drawImage(big, 0, 0, rw, rh);
+
+  // 5) undo the rotation and crop back to the original frame.
+  const back = rotateCanvas(screen, -cfg.angle, bgColor);
+  const out = document.createElement("canvas");
+  out.width = srcCanvas.width; out.height = srcCanvas.height;
+  const octx = out.getContext("2d");
+  octx.fillStyle = bgColor;
+  octx.fillRect(0, 0, out.width, out.height);
+  octx.drawImage(back, (out.width - back.width) / 2, (out.height - back.height) / 2);
+  return out;
+}
+
+// ---- UI wiring ----
+const $ = (id) => document.getElementById(id);
+const canvas = $("canvas");
+let sourceCanvas = null; // working-resolution copy of the loaded image
+let sourceName = "image";
+
+function readConfig() {
+  return {
+    cellSize: +$("cell").value,
+    angle: +$("angle").value,
+    gamma: +$("gamma").value,
+    maxDot: +$("maxdot").value,
+    scale: +$("scale").value,
+    invert: $("invert").checked,
+  };
+}
+
+function updateLabels(cfg) {
+  $("v-cell").textContent = cfg.cellSize + " px";
+  $("v-angle").textContent = cfg.angle + "°";
+  $("v-gamma").textContent = cfg.gamma.toFixed(2);
+  $("v-maxdot").textContent = cfg.maxDot.toFixed(2);
+  $("v-scale").textContent = cfg.scale + "×";
+
+  const flags = [`--cell-size ${cfg.cellSize}`];
+  if (cfg.angle !== 45) flags.push(`--angle ${cfg.angle}`);
+  if (cfg.gamma !== 1) flags.push(`--gamma ${cfg.gamma}`);
+  if (cfg.maxDot !== 1.4) flags.push(`--max-dot ${cfg.maxDot}`);
+  if (cfg.scale !== 4) flags.push(`--scale ${cfg.scale}`);
+  if (cfg.invert) flags.push("--invert");
+  $("cmd").textContent = `halftone ${sourceName} ${flags.join(" ")}`;
+}
+
+let pending = false;
+function render() {
+  if (!sourceCanvas || pending) return;
+  pending = true;
+  requestAnimationFrame(() => {
+    const cfg = readConfig();
+    updateLabels(cfg);
+    const out = halftone(sourceCanvas, cfg);
+    canvas.width = out.width;
+    canvas.height = out.height;
+    canvas.getContext("2d").drawImage(out, 0, 0);
+    pending = false;
+  });
+}
+
+function loadImage(file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  sourceName = file.name || "image";
+  const img = new Image();
+  img.onload = () => {
+    // Downscale large images to keep slider drags interactive.
+    let w = img.naturalWidth, h = img.naturalHeight;
+    const longest = Math.max(w, h);
+    let note = "";
+    if (longest > MAX_DIM) {
+      const k = MAX_DIM / longest;
+      w = Math.round(w * k); h = Math.round(h * k);
+      note = `Working at ${w}×${h} (downscaled from ${img.naturalWidth}×${img.naturalHeight} for speed).`;
+    }
+    sourceCanvas = document.createElement("canvas");
+    sourceCanvas.width = w; sourceCanvas.height = h;
+    sourceCanvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    $("note").textContent = note;
+    $("stage").classList.add("show");
+    $("drop").style.display = "none";
+    render();
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+// Drop zone events
+const drop = $("drop");
+$("file").addEventListener("change", (e) => loadImage(e.target.files[0]));
+["dragenter", "dragover"].forEach((ev) =>
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
+["dragleave", "drop"].forEach((ev) =>
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
+drop.addEventListener("drop", (e) => loadImage(e.dataTransfer.files[0]));
+// Allow dropping anywhere on the page once an image is loaded.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]);
+});
+
+// Controls
+["cell", "angle", "gamma", "maxdot", "scale"].forEach((id) =>
+  $(id).addEventListener("input", render));
+$("invert").addEventListener("change", render);
+
+$("download").addEventListener("click", () => {
+  const a = document.createElement("a");
+  const base = sourceName.replace(/\.[^.]+$/, "");
+  a.download = `${base}_halftone.png`;
+  a.href = canvas.toDataURL("image/png");
+  a.click();
+});
+
+$("reset").addEventListener("click", () => {
+  sourceCanvas = null;
+  $("stage").classList.remove("show");
+  $("drop").style.display = "";
+  $("file").value = "";
+});
+</script>
+</body>
+</html>
