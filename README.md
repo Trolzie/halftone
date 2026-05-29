@@ -12,6 +12,8 @@ photographs on paper.
 image, tune the screen with live sliders, download the result. Runs entirely
 client-side; nothing is uploaded.
 
+[![halftone web app](examples/web-app.png)](https://trolzie.github.io/halftone/)
+
 ## See it
 
 | Original | Halftone |
