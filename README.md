@@ -14,6 +14,14 @@ photographs on paper.
 | --- | --- |
 | ![Original photo](examples/demo_before.jpg) | ![Halftone version](examples/demo_after.png) |
 
+### Variations
+
+The screen is fully tunable. A few of the looks you can get:
+
+| `--invert` (white ink on black) |
+| --- |
+| ![Inverted halftone](examples/demo_invert.png) |
+
 ## Install
 
 ```bash
